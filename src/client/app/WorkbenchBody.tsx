@@ -10,7 +10,9 @@
  */
 import { PomodoroTimer } from '../components/PomodoroTimer.js'
 import { DailyStats } from '../components/DailyStats.js'
-import { WorkbenchAssembly } from './assembly.js'
+import type { WorkbenchAssembly } from './assembly.js'
+import { WorkbenchSplit } from './WorkbenchSplit.js'
+import { useI18n } from '../i18n.js'
 import { SettingsModal } from '../components/SettingsModal.js'
 import { startOfWeek } from '../format.js'
 import { readNotificationCtor, requestNotificationPermission, sendSystemNotification } from '../notificationCapability.js'
@@ -24,6 +26,7 @@ import { TaskListView } from '../views/TaskListView.js'
 import { TodayPane } from '../views/TodayPane.js'
 
 export function WorkbenchBody(props: WorkbenchAssembly): JSX.Element {
+  const { t } = useI18n()
   const { openSessionInPanel, startAISession } = props.ai.actions
   const { busy } = props.busyApi
   const { bootstrap, childrenOf, dictOf, dicts, pendingMap, selected, taskKnowledge, tasks } = props.data
@@ -58,11 +61,55 @@ export function WorkbenchBody(props: WorkbenchAssembly): JSX.Element {
             <button className="wb-btn" style={{ marginTop: 6 }} onClick={() => setDraftProblems([])}>知道了，关闭提示</button>
           </div>
         )}
-        <div className="wb-nav">
-          <div className="wb-pomodoro" style={{ marginBottom: '10px' }}>
+        <WorkbenchSplit key={view} selectionKey={view === 'knowledge' ? (knowledge.draft !== null ? 'knowledge:edit' : knowledge.selected?.id ?? null) : view === 'ideas' ? (ideas.draft !== null ? 'ideas:edit' : ideas.selectedIdea?.id ?? ideas.selectedCluster?.id ?? null) : selected?.task.id ?? null} detail={<>
+          {view === 'ideas'
+            ? <IdeasDetailPane model={ideas} dictOf={dictOf} busy={busy} startAISession={startAISession} />
+            : view === 'knowledge'
+            ? <KnowledgeDetailPane model={knowledge} tasks={tasks} dictOf={dictOf} setError={setError} setNotice={setNotice} openTaskById={openTaskById} />
+            : (
+              <TaskDetailPane
+                selected={selected}
+                detail={detail}
+                dicts={dicts}
+                dictOf={dictOf}
+                pendingMap={pendingMap}
+                settings={settings}
+                taskKnowledge={taskKnowledge}
+                knowledge={knowledge}
+                busy={busy}
+                editing={editDraft !== null}
+                onOpenEdit={forms.actions.openEdit}
+                subtaskParent={subtaskParent}
+                onAddSubtask={forms.actions.setSubtaskParent}
+                onCancelSubtask={() => forms.actions.setSubtaskParent(null)}
+                startAISession={startAISession}
+                setNotice={setNotice}
+                patchTask={patchTask}
+                saveProgress={saveProgress}
+                completeTaskFromProgress={completeTaskFromProgress}
+                archiveSelectedTask={archiveSelectedTask}
+                openTask={openTask}
+                onRestoreTask={restoreTask}
+                onCreateSubtask={createSubtask}
+                setView={setView}
+                isSessionUsable={(sessionId) => aiSessionUsable(runtime, sessionId)}
+                sessionCandidates={sessionCandidates}
+                sessionListSnapshot={sessionListSnapshot}
+                linkedSessionIds={linkedSessionIds}
+                linkExistingSession={linkExistingSession}
+                openSessionInPanel={openSessionInPanel}
+                addTaskReminder={addTaskReminder}
+                resetReminderState={resetReminderState}
+              />
+            )}
+        </>}>
+          <details className="wb-focus-tools">
+            <summary>{t('专注工具')}</summary>
+            <div className="wb-pomodoro">
             <PomodoroTimer />
             <DailyStats />
-          </div>
+            </div>
+          </details>
       {showSettings && (
         <SettingsModal
           settings={settings}
@@ -205,50 +252,7 @@ export function WorkbenchBody(props: WorkbenchAssembly): JSX.Element {
           {view === 'ideas' && <IdeasListView model={ideas} dictOf={dictOf} busy={busy} startAISession={startAISession} />}
 
           {view === 'list' && <TaskListView model={taskList} dictOf={dictOf} dicts={dicts} selectedId={selected?.task.id} pending={pendingMap} childrenOf={childrenOf} onOpen={openTask} />}
-        </div>
-
-        <div className="wb-detail">
-          {view === 'ideas'
-            ? <IdeasDetailPane model={ideas} dictOf={dictOf} busy={busy} startAISession={startAISession} />
-            : view === 'knowledge'
-            ? <KnowledgeDetailPane model={knowledge} tasks={tasks} dictOf={dictOf} setError={setError} setNotice={setNotice} openTaskById={openTaskById} />
-            : (
-              <TaskDetailPane
-                selected={selected}
-                detail={detail}
-                dicts={dicts}
-                dictOf={dictOf}
-                pendingMap={pendingMap}
-                settings={settings}
-                taskKnowledge={taskKnowledge}
-                knowledge={knowledge}
-                busy={busy}
-                editing={editDraft !== null}
-                onOpenEdit={forms.actions.openEdit}
-                subtaskParent={subtaskParent}
-                onAddSubtask={forms.actions.setSubtaskParent}
-                onCancelSubtask={() => forms.actions.setSubtaskParent(null)}
-                startAISession={startAISession}
-                setNotice={setNotice}
-                patchTask={patchTask}
-                saveProgress={saveProgress}
-                completeTaskFromProgress={completeTaskFromProgress}
-                archiveSelectedTask={archiveSelectedTask}
-                openTask={openTask}
-                onRestoreTask={restoreTask}
-                onCreateSubtask={createSubtask}
-                setView={setView}
-                isSessionUsable={(sessionId) => aiSessionUsable(runtime, sessionId)}
-                sessionCandidates={sessionCandidates}
-                sessionListSnapshot={sessionListSnapshot}
-                linkedSessionIds={linkedSessionIds}
-                linkExistingSession={linkExistingSession}
-                openSessionInPanel={openSessionInPanel}
-                addTaskReminder={addTaskReminder}
-                resetReminderState={resetReminderState}
-              />
-            )}
-        </div>
+        </WorkbenchSplit>
     </div>
   )
 }

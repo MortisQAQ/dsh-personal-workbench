@@ -42,7 +42,7 @@ function fixture() {
   function apply(css = 'current-css') {
     const stubs = `let disposed=false, instanceAlive=true, activeDisposer;
       const sidebarResizeObserver=undefined, sidebarCollapseObserver=undefined, sidebarObserver=undefined, titlebarAttributeObserver=undefined;
-      const titlebarTimer=0, syncTopInset=()=>{}, officialDisposers=[], ACTIVE_ATTR='a', OFFICIAL_ATTR='b', getPluginCtx=()=>undefined, ctx={}, setPluginCtx=()=>{}, workbenchHost=undefined, runtime={};`
+      const titlebarTimer=0, syncTopInset=()=>{}, officialDisposers=[], ACTIVE_ATTR='a', OFFICIAL_ATTR='b', getPluginCtx=()=>undefined, ctx={}, setPluginCtx=()=>{}, workbenchHost=undefined, runtime={}, disposeSidebarSurface=()=>{};`
     return new Function('document', 'MutationObserver', 'CSS', 'window', `${ensure}\n${stubs}\nensureStyle();\n${registration}\n${cleanup}\nreturn { ensure:ensureStyle, cleanup };`)(document, Observer, css, { removeEventListener() {} })
   }
   return { apply, nodes, observers, notify, remove() { nodes.splice(0); notify() }, callbacks: () => callbacks }

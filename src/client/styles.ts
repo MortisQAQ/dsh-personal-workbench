@@ -68,7 +68,13 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 /* v1.14.53 删掉了「自建入口行上的红点」规则（html[pending] [entry]::after）：
    DOM 降级腿删除后没有自建入口行了，待确认计数改由工作台内的「待处理」胶囊显示
    （见 index.tsx 的 wb-pending-pill）。PENDING_ATTR 仍用于草稿浮卡的定位。 */
-.wb-app { height:100%; display:flex; flex-direction:column; }
+/* .wb-app 自成一个宽度容器：顶栏在 .wb-body 之外，只有这里能按"实际面板宽度"问，
+   问视口会在"宽窗口 + 窄侧栏"时给出错误的答案（360px 侧栏实测溢出 6px）。 */
+.wb-app { height:100%; display:flex; flex-direction:column; container-type:inline-size; container-name:wbapp; }
+@container wbapp (max-width: 760px) {
+  .wb-h { flex-wrap: wrap; padding: 10px 12px; gap: 8px; }
+  .wb-h .wb-segmented { flex-wrap: wrap; }
+}
 .wb-h { flex:none; display:flex; align-items:center; gap:12px; padding:14px 18px; border-bottom:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.22)); background:var(--dsw-alias-bg-layer-1, rgba(255,255,255,.02)); }
 /* 英文标签比中文长：按钮/分段项一律不折行，否则顶栏会出现"两行字"的矮按钮（实测 en-US 截图）。 */
 .wb-h .wb-btn, .wb-h .wb-seg { white-space:nowrap; }
@@ -92,9 +98,65 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 .wb-btn svg { width:15px; height:15px; }
 .wb-btn:hover { background: color-mix(in srgb, var(--dsw-alias-label-primary, #fff) 6%, transparent); color:var(--dsw-alias-label-primary); }
 .wb-btn.primary { background: color-mix(in srgb, var(--dsw-alias-state-business-primary, #4f8ef7) 16%, transparent); border:1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary, #4f8ef7) 38%, transparent); color:var(--dsw-alias-label-primary); }
-.wb-body { flex:1; min-height:0; display:flex; }
-.wb-nav { flex:0 0 min(56%, 880px); min-width:420px; overflow:auto; padding:0 18px 16px; box-sizing:border-box; border-right:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.14)); }
+/* ---------------------------------------------------------------------------
+   布局骨架：主/详分栏（宽屏优先）
+   ---------------------------------------------------------------------------
+   形态由**容器自身宽度**决定（container query），不由视口猜：
+   同一个工作台既可能铺满会话页（宽），也可能挂在右侧栏里（窄），
+   按视口判断会在"宽窗口 + 窄侧栏"时误判成宽布局，把两栏挤成一团。
+
+   ⚠️ .wb-nav 旧实现写死了 min-width:420px 与 flex-basis:56%：
+   窄容器下这两条会**把父容器撑出横向溢出**（实测 1000px 容器被撑到 1359px），
+   所以尺寸一律交给 .wb-split > * 与下面的 container query，基线只保留滚动与内边距。
+   --------------------------------------------------------------------------- */
+.wb-body { flex:1; min-height:0; display:flex; container-type:inline-size; container-name:wb; }
+.wb-split { flex:1; min-width:0; min-height:0; display:flex; }
+/* 列宽必须**确定**：flex:0 1 <basis> 会让详情列按内容宽度参与收缩，
+   窄容器下列表被压到 34%（实测 344px/1000px）并触发横向溢出。
+   现在左列 flex:0 0 auto + 显式 width，右列 flex:1 1 0 只吃剩余空间。 */
+.wb-split > .wb-nav {
+  flex:0 0 auto; width:min(48%, 720px); min-width:0; overflow:auto;
+  padding:0 18px 16px; box-sizing:border-box;
+  border-right:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.14));
+}
+.wb-split > .wb-detail { flex:1 1 0; min-width:0; overflow:auto; padding:16px 18px; box-sizing:border-box; }
+/* 单栏主从态才出现的两个控件：宽屏下它们没有任何意义。 */
+.wb-detail-heading { display:none; }
+.wb-detail-reopen { display:none; }
+/* 宽屏（≥1200）：左栏多一档呼吸，详情常驻。 */
+@container wb (min-width: 1200px) {
+  .wb-split > .wb-nav { width: min(44%, 820px); }
+}
+/* 主力形态（1000–1199）：左右并排，列表仍是主位。 */
+@container wb (min-width: 1000px) and (max-width: 1199px) {
+  .wb-split > .wb-nav { width: min(50%, 680px); }
+}
+/* 窄容器（<1000）：改**单栏主从**，不再把两栏压成上下各半屏。
+   选中一条 → 详情接管；「返回列表」退回列表（选择本身不动，只收显示）。 */
+@container wb (max-width: 999px) {
+  .wb-split { flex-direction: column; }
+  .wb-split > .wb-nav { flex:1 1 auto; width:auto; border-right:none; padding:0 12px 12px; }
+  .wb-split > .wb-detail { flex:1 1 auto; padding:12px; }
+  .wb-split[data-has-selection='1'] .wb-detail-reopen { display:inline-flex; align-self:flex-start; margin:12px 0 4px; }
+  .wb-split[data-detail-active='1'] > .wb-nav { display:none; }
+  .wb-split[data-detail-active='0'] > .wb-detail { display:none; }
+  .wb-detail-heading { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:11.5px;
+    letter-spacing:.06em; color:var(--wb-ink-3); text-transform:uppercase; }
+  .wb-detail-back { display:inline-flex; text-transform:none; letter-spacing:0; }
+}
 .wb-nav > :first-child:not(.wb-stats-sticky) { margin-top:16px; }
+/* 专注工具（番茄钟 + 今日统计）：默认收起。
+   Linear 的"别抢未赚到的注意力"在这里的具体含义：它属于**辅助**，
+   不该占据每个视图的首屏；需要时展开，状态由 <details> 自己持有（不新增 state）。 */
+.wb-focus-tools { margin-bottom: 10px; border:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.20));
+  border-radius:12px; background:var(--dsw-alias-bg-layer-1, rgba(255,255,255,.03)); }
+.wb-focus-tools > summary { cursor:pointer; list-style:none; padding:8px 12px; font-size:12px;
+  color:var(--dsw-alias-label-secondary, #999); display:flex; align-items:center; gap:6px; }
+.wb-focus-tools > summary::-webkit-details-marker { display:none; }
+.wb-focus-tools > summary::before { content:'▸'; font-size:10px; transition:transform .15s ease; }
+.wb-focus-tools[open] > summary::before { transform:rotate(90deg); }
+.wb-focus-tools > summary:hover { color:var(--dsw-alias-label-primary, #eee); }
+.wb-focus-tools > .wb-pomodoro { padding:0 12px 12px; }
 /* 番茄钟（2026-11-16）：卡片 + 等宽数字时钟；token 用法与 .wb-stat 一致。 */
 .wb-pomodoro { display:flex; flex-direction:column; gap:8px; }
 .wb-pomo-card { border:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.20)); background:var(--dsw-alias-bg-layer-1, rgba(255,255,255,.03)); border-radius:12px; padding:10px 12px; }
@@ -105,7 +167,6 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 .wb-pomo-clock { font-variant-numeric:tabular-nums; font-size:28px; font-weight:600; line-height:1.2; margin:2px 0 8px; }
 .wb-pomo-actions { display:flex; gap:6px; }
 .wb-pomo-stats { font-size:12px; color:var(--dsw-alias-label-secondary, #999); margin-top:2px; }
-.wb-detail { flex:1; min-width:0; overflow:auto; padding:16px 18px; box-sizing:border-box; }
 .wb-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
 .wb-stat { border:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.20)); background:var(--dsw-alias-bg-layer-1, rgba(255,255,255,.03)); border-radius:12px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
 .wb-stat b { font-size:20px; }
@@ -124,7 +185,10 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 .wb-plan-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--dsw-alias-label-primary, #888) 38%, transparent); border-radius:4px; }
 .wb-plan-expanded .wb-plan-scroll { max-height:min(70vh,720px); }
 .wb-plan-footer { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:10px; padding-top:10px; border-top:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.14)); font-size:12px; color:var(--dsw-alias-label-secondary); }
-.wb-plan-item { min-width:0; gap:6px; }
+.wb-plan-item { min-width:0; gap:6px; flex-wrap:wrap; }
+/* 计划行右侧是 2–3 个按钮的固定组：窄列下必须允许它换到第二行，
+   否则整行 min-content 撑到 449px（1000px 容器实测横向溢出 60px）。 */
+.wb-plan-item-actions { flex:0 1 auto; min-width:0; margin-left:auto; flex-wrap:wrap; justify-content:flex-end; }
 .wb-plan-item b, .wb-plan-item .wb-plan-note { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .wb-plan-item b { flex:0 1 auto; }
 .wb-plan-item .wb-plan-note { flex:1 1 36%; }
@@ -1115,8 +1179,12 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 /* 知识库工具栏：**一行**放完 —— 左半搜索/排序/命中数，右半三个按钮。
    宽度不够时只缩搜索框（唯一可缩项）；按钮一律 flex:none + nowrap，
    否则会被父级 flex 压成竖排文字（本项目踩过一次：缺 flex-shrink/min-width/white-space 三重保护）。 */
-.wb-kb-bar { display:flex; gap:8px; align-items:center; margin-bottom:9px; }
+.wb-kb-bar { display:flex; gap:8px; align-items:center; margin-bottom:9px; flex-wrap:wrap; }
+/* 按钮/下拉一律 flex:none + nowrap（被父级 flex 压成竖排文字是踩过的坑），
+   但**搜索框要能缩**：它是这一行唯一可缩项。整行允许换行，
+   窄容器下宁可换行也不要横向溢出（1000px 断点实测会溢出 45px）。 */
 .wb-kb-bar > * { flex:none; white-space:nowrap; }
+.wb-kb-bar > input { flex:1 1 160px; min-width:0; }
 .wb-kb-search { flex:1 1 auto; min-width:110px; background:var(--wb-sunk); border:1px solid var(--wb-line); color:inherit;
   border-radius:var(--wb-r-1); padding:7px 10px; font:inherit; font-size:12.5px; }
 .wb-kb-spacer { flex:1 1 auto !important; min-width:0; }
@@ -1300,13 +1368,11 @@ html[${OFFICIAL_ATTR}] .wb-sidebar-surface [${VIEW_ATTR}] {
 .wb-delegated-hint { margin: 18px; padding: 14px 16px; border-radius: 10px; font-size: 13px; line-height: 1.6;
   color: var(--wb-label-secondary); background: var(--wb-bg-layer-1); border: 1px dashed var(--wb-border-l1); }
 .wb-tab-title { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* 侧栏表面只调"外壳"与高密度组件：主/详分栏已由 .wb-split 的容器查询统一负责，
+   这里再写一份就是同一语义的第二处实现（本仓最贵的 bug 类别）。 */
 @container (max-width: 760px) {
-  .wb-sidebar-surface .wb-body { flex-direction: column; }
-  .wb-sidebar-surface .wb-nav { flex: 1 1 52%; min-width: 0; width: 100%; border-right: none;
-    border-bottom: 1px solid var(--wb-border-l1); padding: 0 12px 12px; }
-  .wb-sidebar-surface .wb-nav > :first-child:not(.wb-stats-sticky) { margin-top: 12px; }
-  .wb-sidebar-surface .wb-detail { flex: 1 1 48%; padding: 12px; }
   .wb-sidebar-surface .wb-h { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .wb-sidebar-surface .wb-nav > :first-child:not(.wb-stats-sticky) { margin-top: 12px; }
   .wb-sidebar-surface .wb-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .wb-sidebar-surface .wb-stats-sticky { margin: 0 -12px 10px; padding: 10px 12px 12px; }
   .wb-sidebar-surface .wb-idea-cards { grid-template-columns: 1fr; }

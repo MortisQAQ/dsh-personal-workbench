@@ -19,11 +19,13 @@ import {
 } from './entryContract.js'
 // 入口文案的语言：侧栏行与会话标题栏按钮由宿主槽位渲染，在 I18nProvider 之外（见该文件文件头）。
 import { entryText } from './entryLocale.js'
-// 右侧栏 tab 表面（feature #1）：纯声明 + 纯判定，见该文件文件头。
+// 右侧栏 tab 表面（feature #1）：契约 / 判定 / 渲染权 / 注册事务，四个纯模块，见各自文件头。
 import {
-  CENTER_DELEGATED_HINT, WORKBENCH_TAB_ID, WORKBENCH_TAB_KIND,
-  decideSurfaceOwner, sidebarSurfacePresence, workbenchTabDefinition,
+  CENTER_DELEGATED_HINT, decideSurfaceOwner, describeSurface,
 } from './sidebarSurface.js'
+import { sidebarSurfacePresence } from './sidebarPresence.js'
+import { readTabInfo, tabCloseActionOf, tabVisibleOf } from './sidebarTabInfo.js'
+import { registerSidebarSurface, type SidebarScopeLike } from './sidebarRegistration.js'
 import { ToastHost } from './components/Toast.js'
 import { api } from './api.js'
 // 快速录入域（D17/P6-2）：三个浏览器侧小工具搬进纯模块 —— 快速录入域与 AI 会话域共用。
@@ -1219,48 +1221,70 @@ let workbenchHost: {
 } | undefined
 
 /**
- * 订阅"侧栏 tab 是否正承载那棵唯一的 App"。
+ * 订阅渲染权与它的可见性（状态归 `sidebarSurfacePresence` 单例，这里只读）。
  *
- * 渲染权归 `sidebarSurfacePresence` 单例所有（写入点只有侧栏正文的挂载/卸载），
- * 这里只读。放在 hook 里是为了让中央面板在侧栏挂上/摘掉时重渲染 —— 不轮询、不读 DOM。
+ * `visible` 只用于诊断，**不参与互斥判定** —— 互斥按挂载算，理由见 `decideSurfaceOwner()`。
  */
-function useSidebarSurfaceMounted(): boolean {
+function useSidebarSurface(): { mounted: boolean; visible: boolean } {
   const [mounted, setMounted] = useState(() => sidebarSurfacePresence.isMounted())
-  useEffect(() => sidebarSurfacePresence.subscribe(() => setMounted(sidebarSurfacePresence.isMounted())), [])
-  return mounted
+  const [visible, setVisible] = useState(() => sidebarSurfacePresence.isVisible())
+  useEffect(() => sidebarSurfacePresence.subscribe(() => {
+    setMounted(sidebarSurfacePresence.isMounted())
+    setVisible(sidebarSurfacePresence.isVisible())
+  }), [])
+  return { mounted, visible }
 }
 
 /**
- * 右侧栏 tab 的正文（注册给 `sidebar.right.pane.tab`，key = {@link WORKBENCH_TAB_ID}）。
+ * 右侧栏 tab 的正文（注册给 `sidebar.right.pane.tab`，key = 类型 id）。
  *
- * ## 为什么复用 `WorkbenchApp` 而不是另写一套紧凑 UI
+ * 复用 `WorkbenchApp` 而不是另写一套紧凑 UI：领域状态全在它内部装配，另写一份 = 两套 state
+ * 两个写入者（本仓最贵的 bug 类别）。侧栏只是**换一个宿主位置**，差别只在容器（不带 `position:fixed`）。
  *
- * 工作台的领域状态（任务 / 计划 / 草稿 / 提醒 / 专家）全在 `WorkbenchApp` 内部装配，
- * 另写一份 = 两套 state 两个写入者（本仓最贵的 bug 类别）。所以侧栏只是**换一个宿主位置**，
- * 内容与行为**逐字一致**，差别只在容器：这里不带 `position:fixed`，宽度跟随侧栏（见 CSS `.wb-sidebar-surface`）。
- *
- * ## 关面板怎么办
- *
- * 侧栏 tab 的关闭动作归宿主：正文通过框架注入的 `useTabInfo()` 拿到本 tab 的 `tab.actions.close`。
- * 拿不到（宿主没给这个 hook）时退成"什么都不做"，并在控制台留一条原因 ——
- * 不静默假装关掉了（那会让「开完 AI 会话就收面板」看起来像没反应）。
+ * ⚠️ 两条别改回去的取证（2026-11-17，安装版宿主 `tabInfoFactory`）：
+ * - `useTabInfo()` **无 selector 参数**，返回 `{ sidebar, panel, tab }`。旧写法
+ *   `useTabInfo(sel => sel.tab)` 的入参被静默忽略 → `tabInfo.actions.close` 恒 undefined
+ *   → 关闭动作永远拿不到。读取收口在 `readTabInfo()`。
+ * - 渲染权**按实例登记**：宿主允许两个横向面板，同 kind 可各挂一个正文；布尔的
+ *   enter/leave 会在"先卸的那个"身上提前交还 → 屏幕上两个 WorkbenchApp。
  */
 function SidebarWorkbench(props: Record<string, unknown>): JSX.Element | null {
   const host = workbenchHost
-  const useTabInfo = props.useTabInfo as ((selector: (info: { tab?: unknown }) => unknown) => unknown) | undefined
-  const tabInfo = useTabInfo?.((info) => info.tab) as
-    | { actions?: { close?: () => void } }
-    | undefined
-
   /**
-   * 挂载即取得渲染权、卸载即归还。
-   *
-   * 幂等在 `SurfacePresence` 里（重复 enter/leave 不重复通知），这里只负责配对。
+   * 实例 id：`useState` 的惰性初始化只跑一次，所以实例身份在本次挂载内稳定。
+   * 不用 `useRef` + 渲染期赋值 —— 那是渲染期改模块级状态（skill §6 禁止）。
    */
+  const [instanceId] = useState(() => sidebarSurfacePresence.mintId())
+  /**
+   * 读宿主注入的 tab 信息。**必须无条件调用**（Hooks 规则）：`readTabInfo` 内部就是
+   * 一次 `useTabInfo()`；没有这个 prop 的宿主对同一实例始终没有，hooks 数量不变。
+   */
+  const tabRead = readTabInfo(props.useTabInfo)
+  const tabVisible = tabVisibleOf(tabRead)
+  const closeTab = tabCloseActionOf(tabRead)
+
+  /** 挂上即取得渲染权、卸下即归还（按实例记名，见上）。 */
   useEffect(() => {
-    sidebarSurfacePresence.enter()
-    return () => sidebarSurfacePresence.leave()
-  }, [])
+    sidebarSurfacePresence.claim(instanceId)
+    return () => sidebarSurfacePresence.release(instanceId)
+  }, [instanceId])
+
+  /** 宿主报告可见性（`tab.visible`）；拿不到就**不上报**，而不是猜成 false。 */
+  useEffect(() => {
+    if (tabVisible === undefined) return
+    sidebarSurfacePresence.setVisible(instanceId, tabVisible)
+    return () => sidebarSurfacePresence.setVisible(instanceId, false)
+  }, [instanceId, tabVisible])
+
+  /** 读 `useTabInfo` 失败只报一次原因（可观测，但不刷屏、不白屏）。 */
+  useEffect(() => {
+    if (tabRead.ok) return
+    console.warn(
+      tabRead.reason === 'missing-hook'
+        ? '[workbench] 宿主未注入 useTabInfo：侧栏 tab 的关闭动作不可用（正文照常渲染）'
+        : `[workbench] 读取 useTabInfo 失败：${tabRead.message ?? ''}（正文照常渲染）`,
+    )
+  }, [tabRead.ok, tabRead.ok ? '' : tabRead.reason, tabRead.ok ? '' : tabRead.message])
 
   if (host === undefined) {
     /**
@@ -1275,12 +1299,11 @@ function SidebarWorkbench(props: Record<string, unknown>): JSX.Element | null {
         <WorkbenchApp
           runtime={host.runtime}
           closePanel={() => {
-            const close = tabInfo?.actions?.close
-            if (typeof close !== 'function') {
-              console.warn('[workbench] 侧栏 tab 没有暴露关闭动作（宿主未注入 useTabInfo.tab.actions.close），本次不收面板')
+            if (typeof closeTab !== 'function') {
+              console.warn('[workbench] 侧栏 tab 没有暴露关闭动作（宿主未注入 tab.actions.close），本次不收面板')
               return
             }
-            try { close() } catch (error) { console.warn('[workbench] 关闭侧栏 tab 失败：', String(error)) }
+            try { closeTab() } catch (error) { console.warn('[workbench] 关闭侧栏 tab 失败：', String(error)) }
           }}
         />
       </div>
@@ -1336,7 +1359,8 @@ function WorkbenchPanelContent(props: Record<string, unknown>): JSX.Element | nu
    *
    * **必须在顶层无条件调用**（Hooks 规则），也必须在下面的早退之前。
    */
-  const sidebarMounted = useSidebarSurfaceMounted()
+  const sidebarSurface = useSidebarSurface()
+  const sidebarMounted = sidebarSurface.mounted
   /**
    * 三个输入都是**取值**（把宿主能力与本地标志读成布尔），判定交给下面的纯函数。
    *
@@ -1367,6 +1391,11 @@ function WorkbenchPanelContent(props: Record<string, unknown>): JSX.Element | nu
    * 两份会互相打架 —— 2026-09-12 实测"点一次暂存要点 5–8 次"），只画一句可读提示。
    */
   const surfaceOwner = decideSurfaceOwner({ sidebarMounted, centerVisible: open })
+  /** 归属变了就留一条可读结论（`describeSurface` 复用同一判定，不重算）：三种成因三种修法。 */
+  useEffect(() => {
+    const surface = describeSurface({ sidebarMounted, sidebarVisible: sidebarSurface.visible, centerVisible: open })
+    console.info(`[workbench] 承载面：${surface.owner} —— ${surface.because}`)
+  }, [surfaceOwner, sidebarMounted, sidebarSurface.visible, open])
 
   /**
    * ⚠️ **所有 DOM 写入都必须放在 effect 里，绝不能留在渲染期**（v1.14.47 修复）。
@@ -1465,28 +1494,27 @@ function WorkbenchPanelContent(props: Record<string, unknown>): JSX.Element | nu
   )
 }
 
-/** 右侧栏扩展席位里我们用到的那一小块（只声明形状，不 import 宿主类型）。 */
-interface SidebarTabRegistry {
-  register: (definition: unknown) => (() => void) | void
-}
-interface SidebarRightController {
-  openTab?: (kind: string, options?: Record<string, unknown>) => void
-}
-interface SidebarScopeSlots {
-  inject: (name: string, callback: () => unknown) => unknown
-  register: (options: Record<string, unknown>, component: unknown) => (() => void) | void
-}
-interface SidebarScope {
-  sidebarRightTabs?: SidebarTabRegistry
-  sidebarRight?: SidebarRightController
-  slots?: SidebarScopeSlots
-}
+/** 上一轮的注册事务句柄（类型/正文/标题的撤销与回滚由 `sidebarRegistration.ts` 负责）。 */
+let sidebarSurfaceRegistration: { dispose: () => void } | undefined
+/** `ctx.inject` 返回的 fiber：撤销**注入等待**（服务一直没出现时它还在 pending）。 */
+let sidebarSurfaceFiber: { dispose?: () => void } | undefined
 
 /**
- * 上一轮注册留下的句柄（宿主的 tab 类型注册**不会**随我们返回的清理函数自动死掉，
- * 它挂在注册表的 `ctx.effect` 上；同一进程里重跑 `apply()` 时 id 会重复）。
+ * 撤掉上一轮的侧栏表面注册。
+ *
+ * ⚠️ 必须在**卸载时也调**（`apply()` 返回的 cleanup 里），不能只在下次 `apply()` 开头调：
+ * 宿主的 tab 类型注册挂在**宿主包自己的 fiber** 上、`slots.inject` 的 effect 挂在
+ * **renderer 的 fiber** 上 —— 两个都不随我们的 cleanup 自动释放。只"下次再倒"的话，
+ * 插件被禁用/卸载后侧栏里那个 tab 还在（点开是 `workbenchHost === undefined` 的空壳），
+ * 再加载同名插件时 `id` 还被占着 → 宿主 `register()` 直接抛
+ * `tab type id "..." is already registered`。**吊销顺序：先事务，再注入等待。**
  */
-let sidebarSurfaceDisposers: Array<() => void> = []
+function disposeSidebarSurface(): void {
+  try { sidebarSurfaceRegistration?.dispose() } catch { /* 已撤过就不管 */ }
+  sidebarSurfaceRegistration = undefined
+  try { sidebarSurfaceFiber?.dispose?.() } catch { /* 同上 */ }
+  sidebarSurfaceFiber = undefined
+}
 
 /**
  * 注册**右侧栏 tab 表面**（feature #1）。
@@ -1498,80 +1526,44 @@ let sidebarSurfaceDisposers: Array<() => void> = []
  * 连中央面板一起丢掉 —— 用不对称的成本换一个入口（本仓 skill §8 的两级口径）。
  * 作用域注入只在服务真的存在时执行回调，正好表达"有就多一个表面，没有就少一个"。
  *
- * ## 失败必须可观测（skill §4）
- *
- * 每一步失败都打一条**含原因**的日志，并且**只**放弃这个表面：中央面板与侧栏入口行不受影响。
+ * 三处注册的**事务性**（一起成功或一起撤回）、迟到回调的取消、失败回滚
+ * 都不在这个函数里 —— 全在 `sidebarRegistration.ts`（纯模块，有单测）。
+ * 这里只做两件浏览器侧的事：拿到作用域、把 fiber 记下来以便卸载时撤销。
  *
  * @param ctx - 插件的 ctx（`apply` 的入参）。
  * @param warn - 失败时的日志出口（由调用方给，便于单测里断言文案）。
  */
 function installSidebarSurface(ctx: unknown, warn: (message: string) => void): void {
-  for (const dispose of sidebarSurfaceDisposers) {
-    try { dispose() } catch { /* 上一轮已经自己拆过就不管 */ }
-  }
-  sidebarSurfaceDisposers = []
+  disposeSidebarSurface()
 
-  const inject = (ctx as { inject?: (deps: readonly string[], callback: (scope: SidebarScope) => void) => unknown }).inject
+  const inject = (ctx as {
+    inject?: (deps: readonly string[], callback: (scope: SidebarScopeLike) => void) => unknown
+  }).inject
   if (typeof inject !== 'function') {
     warn('[workbench] 宿主没有 ctx.inject：右侧栏 tab 表面不注册（中央面板照常可用）')
     return
   }
   try {
-    inject.call(ctx, ['sidebarRight', 'sidebarRightTabs'], (scope) => {
-      const tabs = scope.sidebarRightTabs
-      const slots = scope.slots
-      if (tabs === undefined || typeof tabs.register !== 'function') {
-        warn('[workbench] 未取到 sidebarRightTabs.register：右侧栏 tab 表面不注册（中央面板照常可用）')
-        return
-      }
-      if (slots === undefined || typeof slots.inject !== 'function' || typeof slots.register !== 'function') {
-        warn('[workbench] 右侧栏作用域里没有 slots 服务：侧栏 tab 的正文无处挂载，表面不注册（中央面板照常可用）')
-        return
-      }
-      try {
-        const disposeType = tabs.register(workbenchTabDefinition(
-          entryText('工作台'),
-          entryText('在右侧栏查看今日计划、任务与日历'),
-        ))
-        if (typeof disposeType === 'function') sidebarSurfaceDisposers.push(disposeType)
-      } catch (error) {
-        warn(`[workbench] 右侧栏 tab 类型注册失败（id=${WORKBENCH_TAB_ID} kind=${WORKBENCH_TAB_KIND}）：${String(error)}`)
-        return
-      }
-      /**
-       * 正文与标题：槽位 `key` 必须等于类型的 `id`（宿主按它取"生效中的那一份"）。
-       * 槽位不存在时 `slots.inject` 本身不会回调 —— 那种情况下这个 tab 打开会是空壳，
-       * 所以先探一下槽位是否声明过，探不到就明确不注册。
-       */
-      const hasSlot = (name: string): boolean => {
-        const probe = (slots as { entriesOfSlot?: (slot: string) => unknown }).entriesOfSlot
-        if (typeof probe !== 'function') return true
-        try { probe.call(slots, name); return true } catch { return false }
-      }
-      if (!hasSlot('sidebar.right.pane.tab')) {
-        warn('[workbench] 宿主没有声明 sidebar.right.pane.tab 槽位：侧栏 tab 打开会是空壳，表面不注册（中央面板照常可用）')
-        return
-      }
-      const disposeBody = slots.inject('sidebar.right.pane.tab', () => slots.register(
-        { name: 'sidebar.right.pane.tab', key: WORKBENCH_TAB_ID },
-        SidebarWorkbench as unknown as (props: Record<string, unknown>) => JSX.Element | null,
-      ))
-      if (typeof disposeBody === 'function') sidebarSurfaceDisposers.push(disposeBody as () => void)
-      const disposeTitle = slots.inject('sidebar.right.pane.tab.title', () => slots.register(
-        { name: 'sidebar.right.pane.tab.title', key: WORKBENCH_TAB_ID },
-        WorkbenchTabTitle as unknown as (props: Record<string, unknown>) => JSX.Element | null,
-      ))
-      if (typeof disposeTitle === 'function') sidebarSurfaceDisposers.push(disposeTitle as () => void)
-      console.info(`[workbench] 已注册右侧栏 tab 表面（kind=${WORKBENCH_TAB_KIND}）；从右侧栏引导页的「工作台」入口打开`)
+    const fiber = inject.call(ctx, ['sidebarRight', 'sidebarRightTabs'], (scope) => {
+      sidebarSurfaceRegistration = registerSidebarSurface(scope, {
+        warn,
+        info: (message) => console.info(message),
+        // 文案全部走取值函数：引导卡每次渲染都取最新语言，芯片文字由宿主在打开那一刻取。
+        text: {
+          title: () => entryText('工作台'),
+          guideDescription: () => entryText('在右侧栏查看今日计划、任务与日历'),
+        },
+        body: SidebarWorkbench,
+        // 不注册 title 槽位：宿主会退用打开那一刻捕获的芯片文字，而注册它等于把
+        // 「工作台」在本文件里再写一遍（同一语义两处取值 = 本仓反复踩的那类 bug）。
+      })
     })
+    if (typeof (fiber as { dispose?: unknown } | undefined)?.dispose === 'function') {
+      sidebarSurfaceFiber = fiber as { dispose: () => void }
+    }
   } catch (error) {
     warn(`[workbench] 右侧栏作用域注入失败：${String(error)}（中央面板照常可用）`)
   }
-}
-
-/** 侧栏 tab 芯片的标题（可选槽位；和类型声明里的 `title()` 取同一个文案）。 */
-function WorkbenchTabTitle(): JSX.Element {
-  return <span className="wb-tab-title">{entryText('工作台')}</span>
 }
 
 export function apply(ctx: unknown): () => void {
@@ -2271,6 +2263,8 @@ export function apply(ctx: unknown): () => void {
     for (const dispose of officialDisposers.splice(0)) {
       try { dispose() } catch { /* 卸载阶段不再纠缠 */ }
     }
+    // 侧栏表面必须在这里撤：它的两处注册挂在**别人的** fiber 上（见 disposeSidebarSurface）。
+    disposeSidebarSurface()
     const html = document.documentElement
     /**
      * 只摘自己写过的两个属性（设计文档 I4 白名单）：ACTIVE_ATTR 与 OFFICIAL_ATTR。
