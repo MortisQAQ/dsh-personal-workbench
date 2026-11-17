@@ -224,3 +224,44 @@ test('接线：三个读「当前会话」的地方都走 currentSessionIdOf（�
   assert.match(stripComments(host.text), /readCurrentSessionId\(/, '取到服务后必须交给唯一的纯判据')
 })
 
+/**
+ * I7：`src/client/**` 不得引用 `node:*` 内置模块（浏览器 bundle 纯度）。
+ *
+ * 2026-11-16 事故：番茄钟的记录服务写了 `node:fs` + `node:path`，tsdown 把它们**原样**
+ * 留进了 `lib/client.js` 的 `require("node:fs")`。DSH 的 `__ModuleLoader__` 只认
+ * module table 里的种子词与图行，解析不到就抛
+ * `client-modules: cannot resolve "node:fs"` —— **整个工作台面板**加载失败，
+ * 而不只是番茄钟不显示。这类错误在浏览器里没有任何构建期报警，只能靠静态约束拦。
+ *
+ * 宿主侧（`src/*.ts`）当然可以用 node 内置模块；这条只管会进浏览器 bundle 的
+ * `src/client/**`，并顺带校验构建产物（存在时）。
+ */
+test('I7：client 源码不得引用 node 内置模块', () => {
+  const NODE_SPECIFIER = /(?:from\s*|require\(\s*|import\(\s*|import\s+)['"]node:/
+  const violations = []
+  for (const { path, text } of sources) {
+    if (!rel(path).startsWith('client/')) continue
+    const code = stripComments(text)
+    const match = NODE_SPECIFIER.exec(code)
+    if (match !== null) violations.push(`${rel(path)} → ${match[0].trim()}`)
+    // 浏览器里没有 `process`（`process.env.NODE_ENV` 由 tsdown 的 define 折叠，其余不折叠）。
+    if (/process\.env\.(?!NODE_ENV)/.test(code)) violations.push(`${rel(path)} → process.env.*`)
+  }
+  assert.deepEqual(violations, [],
+    'client 源码只能引用 loader module table 里的模块（react / @deepseek-ai/*），\n'
+    + '  文件读写要么走宿主接口，要么用 localStorage：\n  - ' + violations.join('\n  - '))
+})
+
+test('I7b：构建产物 lib/client.js 里不得残留 node: 说明符', () => {
+  const bundle = join(SRC, '..', 'lib', 'client.js')
+  let text
+  try {
+    text = readFileSync(bundle, 'utf8')
+  } catch {
+    return // 还没构建（`node --test` 单跑源码测试时正常）；`pnpm test` 会先构建，届时必查。
+  }
+  const hit = /["'`]node:[a-z]/.exec(text)
+  assert.equal(hit, null,
+    `lib/client.js 里出现 node: 说明符（${hit?.[0] ?? ''}）—— 浏览器 loader 解析不到会抛错，`
+    + '整个工作台面板都会加载失败。先查 src/client/** 里的 node 内置模块引用。')
+})

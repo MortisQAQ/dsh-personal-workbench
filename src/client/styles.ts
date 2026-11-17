@@ -95,6 +95,16 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 .wb-body { flex:1; min-height:0; display:flex; }
 .wb-nav { flex:0 0 min(56%, 880px); min-width:420px; overflow:auto; padding:0 18px 16px; box-sizing:border-box; border-right:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.14)); }
 .wb-nav > :first-child:not(.wb-stats-sticky) { margin-top:16px; }
+/* 番茄钟（2026-11-16）：卡片 + 等宽数字时钟；token 用法与 .wb-stat 一致。 */
+.wb-pomodoro { display:flex; flex-direction:column; gap:8px; }
+.wb-pomo-card { border:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.20)); background:var(--dsw-alias-bg-layer-1, rgba(255,255,255,.03)); border-radius:12px; padding:10px 12px; }
+.wb-pomo-head { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px; color:var(--dsw-alias-label-secondary, #999); }
+.wb-pomo-phase { font-weight:600; color:var(--dsw-alias-label-primary, #eee); }
+.wb-pomo-phase.break { color:var(--dsw-alias-state-business-primary, #4f8ef7); }
+.wb-pomo-rounds { font-variant-numeric:tabular-nums; }
+.wb-pomo-clock { font-variant-numeric:tabular-nums; font-size:28px; font-weight:600; line-height:1.2; margin:2px 0 8px; }
+.wb-pomo-actions { display:flex; gap:6px; }
+.wb-pomo-stats { font-size:12px; color:var(--dsw-alias-label-secondary, #999); margin-top:2px; }
 .wb-detail { flex:1; min-width:0; overflow:auto; padding:16px 18px; box-sizing:border-box; }
 .wb-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
 .wb-stat { border:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.20)); background:var(--dsw-alias-bg-layer-1, rgba(255,255,255,.03)); border-radius:12px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
@@ -1263,6 +1273,44 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 .wb-idea-foldmenu button:hover { background:color-mix(in srgb, var(--wb-ink-1) 8%, transparent); }
 .wb-idea-foldic { flex:none; }
 .wb-idea-foldnote { padding:5px 9px 7px; font-size:11px; color:var(--wb-ink-3); border-top:1px solid var(--wb-line-soft); margin-top:3px; }
+/* ===========================================================================
+   右侧栏 tab 表面（feature #1：工作台可以在 sidebar 里打开，不必占满会话页）
+   ---------------------------------------------------------------------------
+   同一棵 WorkbenchApp 只换一个宿主位置：这里**不带**满屏层的 fixed 定位，
+   尺寸跟随右侧栏。布局切换用 **container query** 而不是媒体查询 ——
+   侧栏是浮在被撑宽的会话页上的窄列，按视口宽度判断会以为"还很宽"，
+   于是两栏（.wb-nav / .wb-detail）在 480px 里挤成一团。
+   =========================================================================== */
+.wb-sidebar-surface {
+  position: relative; height: 100%; min-height: 0; display: flex; flex-direction: column;
+  background: var(--wb-bg-base); color: var(--wb-label-primary); overflow: hidden;
+  container-type: inline-size;
+}
+.wb-sidebar-surface > .wb-app-scope { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+/* 覆盖 [data-...-view] 的基线（absolute + display:none）与官方门控：
+   侧栏里这棵树**始终可见** —— 显隐由宿主 tab 自己管（切走/关掉就整个卸载），
+   我们的门控只服务于满屏层那条路径，在这里再判一次就等于"两处判定同一个语义"。 */
+.wb-sidebar-surface [${VIEW_ATTR}],
+html[${OFFICIAL_ATTR}] .wb-sidebar-surface [${VIEW_ATTR}] {
+  position: static; inset: auto; z-index: auto; display: flex; flex-direction: column;
+  height: 100%; background: transparent; color: inherit;
+}
+.wb-sidebar-surface .wb-app { height: 100%; min-height: 0; }
+/* 侧栏承载时中央面板那句提示（可观测：不让人对着一片空白猜）。 */
+.wb-delegated-hint { margin: 18px; padding: 14px 16px; border-radius: 10px; font-size: 13px; line-height: 1.6;
+  color: var(--wb-label-secondary); background: var(--wb-bg-layer-1); border: 1px dashed var(--wb-border-l1); }
+.wb-tab-title { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+@container (max-width: 760px) {
+  .wb-sidebar-surface .wb-body { flex-direction: column; }
+  .wb-sidebar-surface .wb-nav { flex: 1 1 52%; min-width: 0; width: 100%; border-right: none;
+    border-bottom: 1px solid var(--wb-border-l1); padding: 0 12px 12px; }
+  .wb-sidebar-surface .wb-nav > :first-child:not(.wb-stats-sticky) { margin-top: 12px; }
+  .wb-sidebar-surface .wb-detail { flex: 1 1 48%; padding: 12px; }
+  .wb-sidebar-surface .wb-h { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .wb-sidebar-surface .wb-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wb-sidebar-surface .wb-stats-sticky { margin: 0 -12px 10px; padding: 10px 12px 12px; }
+  .wb-sidebar-surface .wb-idea-cards { grid-template-columns: 1fr; }
+}
 @media (max-width: 720px) {
   .wb-idea-cards { grid-template-columns:1fr; }
 }

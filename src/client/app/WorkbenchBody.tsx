@@ -8,7 +8,9 @@
  * 解构名与入口里的局部名逐个一致（不把 `selected` 改写成 `data.selected`，
  * 既有判据锚的就是这些原文）。
  */
-import type { WorkbenchAssembly } from './assembly.js'
+import { PomodoroTimer } from '../components/PomodoroTimer.js'
+import { DailyStats } from '../components/DailyStats.js'
+import { WorkbenchAssembly } from './assembly.js'
 import { SettingsModal } from '../components/SettingsModal.js'
 import { startOfWeek } from '../format.js'
 import { readNotificationCtor, requestNotificationPermission, sendSystemNotification } from '../notificationCapability.js'
@@ -57,6 +59,10 @@ export function WorkbenchBody(props: WorkbenchAssembly): JSX.Element {
           </div>
         )}
         <div className="wb-nav">
+          <div className="wb-pomodoro" style={{ marginBottom: '10px' }}>
+            <PomodoroTimer />
+            <DailyStats />
+          </div>
       {showSettings && (
         <SettingsModal
           settings={settings}
