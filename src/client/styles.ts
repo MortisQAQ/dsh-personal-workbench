@@ -167,6 +167,29 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 .wb-pomo-clock { font-variant-numeric:tabular-nums; font-size:28px; font-weight:600; line-height:1.2; margin:2px 0 8px; }
 .wb-pomo-actions { display:flex; gap:6px; }
 .wb-pomo-stats { font-size:12px; color:var(--dsw-alias-label-secondary, #999); margin-top:2px; }
+/* 顶栏常驻胶囊：计时器是跨视图会话，切到任何视图都能看见、点得到。
+   空闲态低调（灰），运行态有一点点"在跑"的存在感（圆点呼吸），不抢主任务注意力。 */
+.wb-pomo-chip { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:4px 10px;
+  border:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.26)); background:transparent;
+  color:var(--dsw-alias-label-secondary, #999); font:inherit; font-size:12px; cursor:pointer;
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+.wb-pomo-chip:hover { color:var(--dsw-alias-label-primary, #eee);
+  background:color-mix(in srgb, var(--dsw-alias-label-primary, #fff) 6%, transparent); }
+.wb-pomo-chip-dot { width:7px; height:7px; border-radius:50%; flex:none;
+  background:color-mix(in srgb, var(--dsw-alias-label-secondary, #999) 60%, transparent); }
+.wb-pomo-chip.running { color:var(--dsw-alias-label-primary, #eee);
+  border-color:color-mix(in srgb, #2E9B7B 45%, transparent);
+  background:color-mix(in srgb, #2E9B7B 12%, transparent); }
+.wb-pomo-chip.running .wb-pomo-chip-dot { background:#2E9B7B; animation:wb-pomo-pulse 2s ease-in-out infinite; }
+.wb-pomo-chip.break.running { border-color:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4f8ef7) 45%, transparent);
+  background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4f8ef7) 12%, transparent); }
+.wb-pomo-chip.break.running .wb-pomo-chip-dot { background:var(--dsw-alias-state-business-primary, #4f8ef7); }
+@keyframes wb-pomo-pulse { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+@media (prefers-reduced-motion: reduce) { .wb-pomo-chip.running .wb-pomo-chip-dot { animation:none } }
+/* 窄面板：只留时钟与状态点，省掉"专注/休息"两个字 */
+@container wbapp (max-width: 900px) {
+  .wb-pomo-chip-phase { display:none; }
+}
 /* 时长设置：一行两个"数字 + 单位"，宽度不够就换行（窄侧栏 1 分钟也不该横向溢出）。 */
 .wb-pomo-durations { display:flex; flex-wrap:wrap; gap:8px 12px; margin-top:8px; padding-top:8px;
   border-top:1px dashed var(--dsw-alias-border-l1, rgba(127,127,127,.20)); font-size:12px; }

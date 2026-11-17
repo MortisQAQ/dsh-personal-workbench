@@ -30,6 +30,8 @@
     "src/client/components/DayPanel.tsx",
     "src/shared/taskProgress.ts",
     "src/shared/pomodoro.ts",
+    "src/shared/pomodoroMachine.ts",
+    "src/client/services/pomodoroTimer.ts",
     "src/shared/dailyPlanPolicy.ts",
     "src/shared/persona.ts",
     "src/personas/parse.ts",

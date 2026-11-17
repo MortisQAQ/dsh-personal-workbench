@@ -125,6 +125,20 @@ export function summarizeFocusByDay(sessions: readonly FocusSession[], dayKeys: 
 }
 
 /**
+ * 倒计时时钟文案 `mm:ss`（超过 59 分钟按 60 分钟计，番茄钟不会跑到那个量级）。
+ *
+ * 唯一实现：胶囊与卡片共用它，否则两处会出现"一个显示 01:00、一个显示 1:00"的差异。
+ *
+ * @param seconds - 剩余秒数（负数按 0）。
+ */
+export function formatClock(seconds: number): string {
+  const safe = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0
+  const minutes = Math.floor(safe / 60)
+  const rest = safe % 60
+  return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
+}
+
+/**
  * 人类可读的专注时长（用于"今日已专注 …"）。
  *
  * @param seconds - 秒数。

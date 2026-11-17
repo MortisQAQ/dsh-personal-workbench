@@ -10,6 +10,7 @@
  */
 import { PomodoroTimer } from '../components/PomodoroTimer.js'
 import { DailyStats } from '../components/DailyStats.js'
+import { PomodoroNotifier } from '../components/PomodoroNotifier.js'
 import type { WorkbenchAssembly } from './assembly.js'
 import { WorkbenchSplit } from './WorkbenchSplit.js'
 import { useI18n } from '../i18n.js'
@@ -46,6 +47,8 @@ export function WorkbenchBody(props: WorkbenchAssembly): JSX.Element {
   const { aiSessionUsable, dayPanelProps, detail, forms, ideas, knowledge, linkExistingSession, linkedSessionIds, now, openQuickEntry, openTask, openTaskById, runtime, saveDailyCapacity, sessionCandidates, sessionListSnapshot, taskList } = props
   return (
     <div className="wb-body">
+        {/* 专注完成 → 复用工作台已有的 toast/桌面通知，不新起一套。 */}
+        <PomodoroNotifier pushToast={pushToast} />
         {draftProblems.length > 0 && (
           <div className="wb-draft-problems" role="alert">
             <h5>⚠️ 有 {draftProblems.length} 项没能创建（其余已正常入册）</h5>

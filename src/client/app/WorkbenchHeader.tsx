@@ -10,6 +10,7 @@
  */
 import type { WorkbenchAssembly } from './assembly.js'
 import { Icon } from '../components/Icon.js'
+import { PomodoroChip } from '../components/PomodoroChip.js'
 import { useI18n } from '../i18n.js'
 
 export function WorkbenchHeader(props: WorkbenchAssembly): JSX.Element {
@@ -31,6 +32,7 @@ export function WorkbenchHeader(props: WorkbenchAssembly): JSX.Element {
           <button className={`wb-seg ${view === 'ideas' ? 'on' : ''}`} onClick={() => setView('ideas')}><Icon name="idea" />{t('点子')}</button>
         </div>
         <div style={{ flex: 1 }} />
+        <PomodoroChip />
         {pendingCount > 0 && (
           <button className="wb-pending-pill" onClick={() => setPendingOpen(true)} title={t('待你处理的草稿与提醒')}>
             <Icon name="bell" size={13} />{t('待处理')} <span className="count">{pendingCount}</span>

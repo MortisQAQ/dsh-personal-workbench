@@ -226,6 +226,9 @@ export function headerFragment(extra) {
     '<button class="wb-seg" type="button">点子</button>',
     '</div>',
     '<div style="flex:1"></div>',
+    // 番茄钟胶囊（顶栏常驻）：真实组件在 <1000px 会隐藏"专注/休息"两个字，
+    // 这里照抄同样的结构，让窄宽度下的横向溢出判定覆盖到它。
+    '<button class="wb-pomo-chip running" type="button" data-pomo-status="running"><span class="wb-pomo-chip-dot"></span><span class="wb-pomo-chip-clock">24:31</span><span class="wb-pomo-chip-phase">专注</span></button>',
     '<button class="wb-pending-pill" type="button">待处理 <span class="count">3</span></button>',
     '<button class="wb-btn primary" type="button"><span class="wb-label">快速录入</span></button>',
     '<button class="wb-btn" type="button"><span class="wb-label">新建</span></button>',
