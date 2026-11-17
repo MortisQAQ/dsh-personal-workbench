@@ -312,6 +312,15 @@ export interface WorkbenchSettings {
    */
   autoSummonExperts: boolean
   /**
+   * 番茄钟「专注」时长（分钟，缺省 25，夹 1–180）。
+   *
+   * 为什么是偏好而不是常量：25 分钟只是番茄工作法的出厂值，真实的专注块因人因事而异
+   * （写代码常 50 分钟、回顾常 15 分钟）。夹取口径只有一处：`shared/pomodoro.ts`。
+   */
+  pomodoroWorkMinutes: number
+  /** 番茄钟「休息」时长（分钟，缺省 5，夹 1–180）。 */
+  pomodoroBreakMinutes: number
+  /**
    * 工作台界面语言（issue #12）：`auto` = 跟随浏览器语言，其余是显式选择。
    *
    * 这是**客户端显示偏好**，不影响服务端产出的任务/草稿内容；服务端只负责持久化。

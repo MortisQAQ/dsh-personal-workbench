@@ -36,6 +36,7 @@ import { classifyTaskDay, dayPlacedIds } from '../shared/dailyPlanPolicy.js'
 import { isOpenTask } from '../shared/taskProgress.js'
 import { isUiLocale, normalizeUiLocale } from '../shared/i18n.js'
 import type { WorkbenchSettings } from '../shared/contracts.js'
+import { POMODORO_BREAK_MINUTES_DEFAULT, POMODORO_WORK_MINUTES_DEFAULT, clampPomodoroMinutes } from '../shared/pomodoro.js'
 import { readPersonaSettings, writePersonaSettings } from '../db/repo/personas.js'
 import { readExpertSettings, writeExpertSettings } from '../db/repo/experts.js'
 
@@ -90,6 +91,17 @@ export function readDefaultEstimateMinutes(db: DatabaseSync): number {
   const raw = Number(readMeta(db, 'default_estimated_minutes'))
   if (!Number.isFinite(raw) || raw < MIN_SETTINGS_ESTIMATE_MINUTES) return DEFAULT_SETTINGS_ESTIMATE_MINUTES
   return Math.min(MAX_SETTINGS_ESTIMATE_MINUTES, Math.round(raw))
+}
+
+/**
+ * 番茄钟时长（分钟）：存 meta，缺省 25 / 5，夹在 1–180 之间。
+ *
+ * 夹取实现**只有一处**（`shared/pomodoro.ts` 的 `clampPomodoroMinutes`）：
+ * 服务端落库、客户端编辑框、localStorage 里的旧值都走它，
+ * 否则会出现"设置页能填 999、实际按 180 跑"或反之的双口径。
+ */
+export function readPomodoroMinutes(db: DatabaseSync, key: string, fallback: number): number {
+  return clampPomodoroMinutes(readMeta(db, key), fallback)
 }
 
 /**
@@ -170,6 +182,9 @@ export function readWorkbenchSettings(db: DatabaseSync): WorkbenchSettings {
     ...readPersonaSettings(db),
     /** 界面语言（issue #12）：客户端显示偏好，服务端只持久化。缺省 auto。 */
     uiLocale: normalizeUiLocale(readMeta(db, 'ui_locale')),
+    /** 番茄钟两个时长：缺省 25 / 5，夹取口径见 `shared/pomodoro.ts`。 */
+    pomodoroWorkMinutes: readPomodoroMinutes(db, 'pomodoro_work_minutes', POMODORO_WORK_MINUTES_DEFAULT),
+    pomodoroBreakMinutes: readPomodoroMinutes(db, 'pomodoro_break_minutes', POMODORO_BREAK_MINUTES_DEFAULT),
     /**
      * 专家自动召唤（缺省**关**）：**唯一实现**在 `db/repo/experts.ts`。
      *
@@ -279,6 +294,17 @@ export function makeRoutes(db: DatabaseSync, deps: WorkbenchRouteDeps = {}): Web
           /** 逾期是否计入今日容量：写单个 meta 键，客户端读同一键（不另开字段）。 */
           if (body.dailyCapacityIncludeOverdue === true || body.dailyCapacityIncludeOverdue === false) {
             writeMeta(db, 'daily_capacity_include_overdue', body.dailyCapacityIncludeOverdue ? '1' : '0')
+          }
+          /**
+           * 番茄钟时长（feature：时长可自定义）。越界**按边界落库**而不是丢弃 ——
+           * 用户填 999 得到 180 是可解释的；"保存后没变"才是不可解释的。
+           * 响应由 `readWorkbenchSettings` 统一回读，所以落库值就是界面看到的最终值。
+           */
+          if (body.pomodoroWorkMinutes !== undefined) {
+            writeMeta(db, 'pomodoro_work_minutes', String(clampPomodoroMinutes(body.pomodoroWorkMinutes, POMODORO_WORK_MINUTES_DEFAULT)))
+          }
+          if (body.pomodoroBreakMinutes !== undefined) {
+            writeMeta(db, 'pomodoro_break_minutes', String(clampPomodoroMinutes(body.pomodoroBreakMinutes, POMODORO_BREAK_MINUTES_DEFAULT)))
           }
           /**
            * 角色库三个偏好（§6.3）：路径 + 两个 ID 数组。

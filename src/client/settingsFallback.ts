@@ -7,6 +7,7 @@
  * 按设计 §3「可测试的纯判定搬到独立模块、不放进入口」，落在这里。
  */
 import { DEFAULT_ESTIMATE_MINUTES } from './capacity.js'
+import { POMODORO_BREAK_MINUTES_DEFAULT, POMODORO_WORK_MINUTES_DEFAULT } from '../shared/pomodoro.js'
 import type { WorkbenchSettings } from '../shared/contracts.js'
 
 /** 容量两项偏好与专家开关的兜底值（与 `capacity.ts`、`expert.ts` 的常量同值：一处读书、一处落库，必须一致）。 */
@@ -22,6 +23,14 @@ const SETTINGS_FALLBACK = {
   autoSummonExperts: false,
   /** 界面语言缺省 auto（旧服务端不返回这个键时跟随浏览器）。 */
   uiLocale: 'auto',
+  /**
+   * 番茄钟两个时长缺省 25 / 5。
+   *
+   * ⚠️ 同上：装盘后到重启前，旧服务端不会返回这两个键，缺兜底就会显示成
+   * 「专注 **undefined** 分钟」，而那正好是本次功能的核心输入框。
+   */
+  pomodoroWorkMinutes: POMODORO_WORK_MINUTES_DEFAULT,
+  pomodoroBreakMinutes: POMODORO_BREAK_MINUTES_DEFAULT,
 } as const
 
 /**
@@ -43,5 +52,7 @@ export function withSettingsFallback(settings: WorkbenchSettings): WorkbenchSett
     dailyCapacityIncludeOverdue: settings.dailyCapacityIncludeOverdue ?? SETTINGS_FALLBACK.dailyCapacityIncludeOverdue,
     autoSummonExperts: settings.autoSummonExperts ?? SETTINGS_FALLBACK.autoSummonExperts,
     uiLocale: settings.uiLocale ?? SETTINGS_FALLBACK.uiLocale,
+    pomodoroWorkMinutes: settings.pomodoroWorkMinutes ?? SETTINGS_FALLBACK.pomodoroWorkMinutes,
+    pomodoroBreakMinutes: settings.pomodoroBreakMinutes ?? SETTINGS_FALLBACK.pomodoroBreakMinutes,
   }
 }

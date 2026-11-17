@@ -37,6 +37,7 @@ import { useCallback, useEffect, useState, type Dispatch, type FormEvent, type S
 import { api } from '../api.js'
 import { DEFAULT_ESTIMATE_MINUTES } from '../capacity.js'
 import { withSettingsFallback } from '../settingsFallback.js'
+import { POMODORO_BREAK_MINUTES_DEFAULT, POMODORO_WORK_MINUTES_DEFAULT, clampPomodoroMinutes } from '../../shared/pomodoro.js'
 import { cacheEntryUiLocale } from '../entryLocale.js'
 import type { ToastTone } from '../components/Toast.js'
 import type { DictKind } from '../components/SettingsModal.js'
@@ -88,6 +89,13 @@ export interface UseWorkbenchSettingsActions {
    * 入参是**日期域**交出的行内编辑态原文 —— 本域不拥有它、也不去读它（跨域只传值）。
    */
   saveDailyCapacity: (rawEdit: string) => Promise<void>
+  /**
+   * 番茄钟时长（分钟）：两个字段各自独立落库（只传要改的那个）。
+   *
+   * 夹取走 `shared/pomodoro.ts` 的同一实现，并由服务端回读值回填 ——
+   * 用户填 999 时界面显示 180（落库真值），而不是"看起来保存了、实际按别的值跑"。
+   */
+  savePomodoroMinutes: (patch: { work?: number; breakMinutes?: number }) => Promise<void>
   saveDictionaryEntry: (event: FormEvent<HTMLFormElement>) => Promise<void>
   toggleDictionaryEntry: (entry: Dict) => Promise<void>
   deleteDictionaryEntry: (entry: Dict) => Promise<void>
@@ -112,7 +120,7 @@ export function useWorkbenchSettings(input: UseWorkbenchSettingsInput): UseWorkb
   // 注入回调改回域内原名（见文件头「为什么注入回调要在这里改回原名」）。
   const { dictOf, refresh, onError: setError, onNotice: setNotice, onToast: pushToast } = input
 
-  const [settings, setSettings] = useState<WorkbenchSettings>({ defaultWorkspace: '', autoCreateTypeFolders: true, desktopNotify: true, dailyCapacityMinutes: 390, quickWorkspaceRecent: [], autoKnowledgeRecall: true, defaultEstimateMinutes: DEFAULT_ESTIMATE_MINUTES, dailyCapacityIncludeOverdue: false, personaExternalDir: '', personaFavorites: [], personaDisabledIds: [], autoSummonExperts: false, uiLocale: 'auto' })
+  const [settings, setSettings] = useState<WorkbenchSettings>({ defaultWorkspace: '', autoCreateTypeFolders: true, desktopNotify: true, dailyCapacityMinutes: 390, quickWorkspaceRecent: [], autoKnowledgeRecall: true, defaultEstimateMinutes: DEFAULT_ESTIMATE_MINUTES, dailyCapacityIncludeOverdue: false, personaExternalDir: '', personaFavorites: [], personaDisabledIds: [], autoSummonExperts: false, uiLocale: 'auto', pomodoroWorkMinutes: POMODORO_WORK_MINUTES_DEFAULT, pomodoroBreakMinutes: POMODORO_BREAK_MINUTES_DEFAULT })
   const [showSettings, setShowSettings] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
   /** 知识库召回回执：人类可读的日志行 + 每个会话的开关覆盖（设置页「知识库召回」分区用）。 */
@@ -297,6 +305,38 @@ export function useWorkbenchSettings(input: UseWorkbenchSettingsInput): UseWorkb
     }
   }
 
+  /**
+   * 保存番茄钟时长。
+   *
+   * 与 `saveDailyCapacity` 同构：乐观更新（先改屏，用户不必等一个来回）+ 失败回滚，
+   * 但**落库值以服务端响应为准**（夹取后的真值），这样越界输入不会在界面上"看起来生效"。
+   */
+  const savePomodoroMinutes = async (patch: { work?: number; breakMinutes?: number }): Promise<void> => {
+    const body: Record<string, number> = {}
+    if (patch.work !== undefined) body.pomodoroWorkMinutes = patch.work
+    if (patch.breakMinutes !== undefined) body.pomodoroBreakMinutes = patch.breakMinutes
+    if (Object.keys(body).length === 0) return
+    const previous = settings
+    const optimistic: WorkbenchSettings = {
+      ...settings,
+      pomodoroWorkMinutes: patch.work === undefined ? settings.pomodoroWorkMinutes : clampPomodoroMinutes(patch.work, settings.pomodoroWorkMinutes),
+      pomodoroBreakMinutes: patch.breakMinutes === undefined ? settings.pomodoroBreakMinutes : clampPomodoroMinutes(patch.breakMinutes, settings.pomodoroBreakMinutes),
+    }
+    setSettings(optimistic)
+    try {
+      const response = await api<{ settings: WorkbenchSettings }>('/api/workbench/settings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      /** 服务端回读值才是权威（越界被夹过的真值在这里体现）。 */
+      setSettings(withSettingsFallback(response.settings))
+    } catch (e) {
+      setSettings(previous)
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   return {
     settings,
     showSettings,
@@ -317,6 +357,7 @@ export function useWorkbenchSettings(input: UseWorkbenchSettingsInput): UseWorkb
       saveSettings,
       saveIncludeOverdue,
       saveDailyCapacity,
+      savePomodoroMinutes,
       saveDictionaryEntry,
       toggleDictionaryEntry,
       deleteDictionaryEntry,

@@ -40,7 +40,7 @@ export function WorkbenchBody(props: WorkbenchAssembly): JSX.Element {
   const { view } = props.nav
   const { setView } = props.nav.actions
   const { dictEditCode, dictError, dictForm, dictKind, recallLog, recallSessionOff, settings, settingsSaving, showSettings } = props.prefs
-  const { deleteDictionaryEntry, loadRecallLog, recallSessionRestore, saveDictionaryEntry, saveIncludeOverdue, saveSettings, setDictEditCode, setDictError, setDictForm, setDictKind, setSettings, setShowSettings, toggleDictionaryEntry } = props.prefs.actions
+  const { deleteDictionaryEntry, loadRecallLog, recallSessionRestore, saveDictionaryEntry, saveIncludeOverdue, savePomodoroMinutes, saveSettings, setDictEditCode, setDictError, setDictForm, setDictKind, setSettings, setShowSettings, toggleDictionaryEntry } = props.prefs.actions
   const { notifyPerm, reminderBusy, reminderChannel, reminderOptions, reminderPolicy } = props.remindersApi
   const { addTaskReminder, loadReminderChannel, resetReminderState, saveReminderPolicy, saveReminderTarget, sendReminderTest, setNotifyPerm, setReminderChannel, setReminderPolicy } = props.remindersApi.actions
   const { aiSessionUsable, dayPanelProps, detail, forms, ideas, knowledge, linkExistingSession, linkedSessionIds, now, openQuickEntry, openTask, openTaskById, runtime, saveDailyCapacity, sessionCandidates, sessionListSnapshot, taskList } = props
@@ -106,7 +106,12 @@ export function WorkbenchBody(props: WorkbenchAssembly): JSX.Element {
           <details className="wb-focus-tools">
             <summary>{t('专注工具')}</summary>
             <div className="wb-pomodoro">
-            <PomodoroTimer />
+            {/* 时长是偏好（WorkbenchSettings），卡片只负责编辑并把值交回去。 */}
+            <PomodoroTimer
+              workMinutes={settings.pomodoroWorkMinutes}
+              breakMinutes={settings.pomodoroBreakMinutes}
+              onSaveDurations={(patch) => void savePomodoroMinutes(patch)}
+            />
             <DailyStats />
             </div>
           </details>

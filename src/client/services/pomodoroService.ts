@@ -12,18 +12,23 @@
  * 不只是番茄钟不显示。
  *
  * 结论：`src/client/**` 里不许出现 `node:*`。记录量很小（一天几十条），
- * localStorage 足够，也不需要宿主侧新开接口（那会要求重启宿主）。
+ * localStorage 足够。
+ *
+ * ## 每日归集的口径
+ *
+ * 归集（哪些记录算哪一天、缺失日期补 0、时长折算文案）**全部**在
+ * `shared/pomodoro.ts`，本文件只负责读写与订阅。两边各写一份的结果就是
+ * "统计页按 UTC 分组、记录页按本地分组"这类查不清的偏差。
  *
  * 存储格式与旧版一致（`{ start: ISO 字符串, duration: 秒 }`），旧数据键名沿用，
  * 因此曾经的记录不会因为换了后端而"消失"。
  */
+import {
+  localDayKey, recentDayKeys, summarizeFocusByDay,
+  type FocusDaySummary, type FocusSession,
+} from '../../shared/pomodoro.js'
 
-export interface PomodoroSession {
-  /** 本段专注的开始时间（ISO 8601）。 */
-  start: string
-  /** 本段专注的时长，**秒**。 */
-  duration: number
-}
+export type { FocusDaySummary, FocusSession }
 
 const STORAGE_KEY = 'dsh-workbench:pomodoro-logs'
 /** 只留最近 N 段，防止 localStorage 无限增长（一天几十段，够用一年多）。 */
@@ -40,7 +45,7 @@ function store(): Storage | null {
   }
 }
 
-function readAll(): PomodoroSession[] {
+function readAll(): FocusSession[] {
   const storage = store()
   if (storage === null) return []
   try {
@@ -48,16 +53,16 @@ function readAll(): PomodoroSession[] {
     if (raw === null || raw === '') return []
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is PomodoroSession =>
+    return parsed.filter((item): item is FocusSession =>
       typeof item === 'object' && item !== null
-      && typeof (item as PomodoroSession).start === 'string'
-      && typeof (item as PomodoroSession).duration === 'number')
+      && typeof (item as FocusSession).start === 'string'
+      && typeof (item as FocusSession).duration === 'number')
   } catch {
     return []
   }
 }
 
-function writeAll(sessions: PomodoroSession[]): void {
+function writeAll(sessions: FocusSession[]): void {
   const storage = store()
   if (storage === null) return
   try {
@@ -83,29 +88,48 @@ export function subscribe(listener: () => void): () => void {
   }
 }
 
-/** 记一段完成的专注。`duration` 是**秒**。 */
-export function saveSession(duration: number): void {
+/**
+ * 记一段完成的专注。
+ *
+ * @param duration - 这段专注的**实际时长**（秒），不是"当前设置里的时长"。
+ *   用户中途改时长时，正在跑的那一段按它**开始那一刻**的时长记账
+ *   （否则 25 分钟跑完却按新设的 50 记，日统计直接翻倍）。
+ * @param startedAt - 这一段的开始时刻；缺省取现在。跨零点的一段算在**开始那天**
+ *   （"晚上 23:50 专注到 00:15"记在前一天，与人的直觉一致，也保证同一次专注不会被拆成两天）。
+ */
+export function saveSession(duration: number, startedAt: Date = new Date()): void {
   if (!Number.isFinite(duration) || duration <= 0) return
+  const start = Number.isNaN(startedAt.getTime()) ? new Date() : startedAt
   const all = readAll()
-  all.push({ start: new Date().toISOString(), duration })
+  all.push({ start: start.toISOString(), duration: Math.round(duration) })
   writeAll(all)
 }
 
+/**
+ * 最近 `count` 天（含今天）的专注汇总，**按时间正序**、缺失日期补 0。
+ *
+ * @param count - 天数，缺省 7。
+ * @param now - 参照时刻（单测注入用）。
+ */
+export function getRecentDays(count: number = 7, now: Date = new Date()): FocusDaySummary[] {
+  return summarizeFocusByDay(readAll(), recentDayKeys(now, count))
+}
+
 /** 今天的专注总时长，**秒**。 */
-export function getDailyTotal(): number {
-  const today = new Date().toDateString()
+export function getDailyTotal(now: Date = new Date()): number {
+  const today = localDayKey(now)
   return readAll()
-    .filter((session) => new Date(session.start).toDateString() === today)
+    .filter((session) => localDayKey(new Date(session.start)) === today)
     .reduce((sum, session) => sum + session.duration, 0)
 }
 
 /** 今天完成的番茄个数。 */
-export function getDailyCount(): number {
-  const today = new Date().toDateString()
-  return readAll().filter((session) => new Date(session.start).toDateString() === today).length
+export function getDailyCount(now: Date = new Date()): number {
+  const today = localDayKey(now)
+  return readAll().filter((session) => localDayKey(new Date(session.start)) === today).length
 }
 
-/** 清空记录（设置里没用上，留给排障/单测调用）。 */
+/** 清空记录（排障/单测用）。 */
 export function clearAll(): void {
   writeAll([])
 }

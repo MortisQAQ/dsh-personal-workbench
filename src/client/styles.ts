@@ -167,6 +167,31 @@ ${panelContainerCss({ view: VIEW_ATTR, official: OFFICIAL_ATTR, active: ACTIVE_A
 .wb-pomo-clock { font-variant-numeric:tabular-nums; font-size:28px; font-weight:600; line-height:1.2; margin:2px 0 8px; }
 .wb-pomo-actions { display:flex; gap:6px; }
 .wb-pomo-stats { font-size:12px; color:var(--dsw-alias-label-secondary, #999); margin-top:2px; }
+/* 时长设置：一行两个"数字 + 单位"，宽度不够就换行（窄侧栏 1 分钟也不该横向溢出）。 */
+.wb-pomo-durations { display:flex; flex-wrap:wrap; gap:8px 12px; margin-top:8px; padding-top:8px;
+  border-top:1px dashed var(--dsw-alias-border-l1, rgba(127,127,127,.20)); font-size:12px; }
+.wb-pomo-dur { display:inline-flex; align-items:center; gap:4px; color:var(--dsw-alias-label-secondary, #999); }
+.wb-pomo-dur-label { white-space:nowrap; }
+.wb-pomo-dur-input { width:56px; box-sizing:border-box; padding:2px 4px; font:inherit; font-variant-numeric:tabular-nums;
+  text-align:right; color:var(--dsw-alias-label-primary, #eee); background:var(--dsw-alias-bg-base, rgba(127,127,127,.08));
+  border:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.26)); border-radius:6px; }
+.wb-pomo-dur-input:focus { outline:2px solid var(--dsw-alias-state-business-primary, #4f8ef7); outline-offset:1px; }
+.wb-pomo-dur-input:disabled { opacity:.55; cursor:not-allowed; }
+.wb-pomo-unit { white-space:nowrap; }
+.wb-pomo-hint { margin-top:6px; font-size:11px; color:var(--dsw-alias-label-secondary, #999); }
+/* 每日统计：今天一行 + 7 根柱。柱高是比例，不是绝对值（最大值那根 ≈ BAR_MAX_PX）。 */
+.wb-pomo-today { color:var(--dsw-alias-label-primary, #eee); font-variant-numeric:tabular-nums; }
+.wb-pomo-trend { display:flex; align-items:flex-end; gap:6px; margin-top:6px; height:34px; }
+.wb-pomo-bar-col { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:3px;
+  flex:1 1 0; min-width:0; height:100%; }
+.wb-pomo-bar-col.empty { opacity:.45; }
+.wb-pomo-bar { display:block; width:100%; max-width:16px; border-radius:3px 3px 1px 1px;
+  background:color-mix(in srgb, var(--dsw-alias-state-business-primary, #4f8ef7) 55%, transparent); }
+.wb-pomo-bar-col.today .wb-pomo-bar { background:var(--dsw-alias-state-business-primary, #4f8ef7); }
+.wb-pomo-bar-col.empty .wb-pomo-bar { background:var(--dsw-alias-border-l1, rgba(127,127,127,.3)); }
+.wb-pomo-bar-label { font-size:10px; line-height:1; color:var(--dsw-alias-label-secondary, #999); }
+.wb-pomo-bar-col.today .wb-pomo-bar-label { color:var(--dsw-alias-label-primary, #eee); font-weight:600; }
+.wb-pomo-week { margin-top:4px; font-size:11px; color:var(--dsw-alias-label-secondary, #999); font-variant-numeric:tabular-nums; }
 .wb-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
 .wb-stat { border:1px solid var(--dsw-alias-border-l1, rgba(127,127,127,.20)); background:var(--dsw-alias-bg-layer-1, rgba(255,255,255,.03)); border-radius:12px; padding:12px 14px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
 .wb-stat b { font-size:20px; }

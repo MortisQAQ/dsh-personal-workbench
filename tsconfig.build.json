@@ -29,6 +29,7 @@
     "src/client/components/PersonaPicker.tsx",
     "src/client/components/DayPanel.tsx",
     "src/shared/taskProgress.ts",
+    "src/shared/pomodoro.ts",
     "src/shared/dailyPlanPolicy.ts",
     "src/shared/persona.ts",
     "src/personas/parse.ts",
